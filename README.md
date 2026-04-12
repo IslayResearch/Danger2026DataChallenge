@@ -85,8 +85,8 @@ The search requires $\sim\sqrt{p}$ random trials, each consisting of a Montgomer
 
 | Target $p$ | Arithmetic | Trials/s (48 cores) | Expected time |
 |---|---|---|---|
-| $10^{15}$ | u64 | ~8M | <1s |
-| $10^{19}$ | u64 | ~8M | ~1 min |
+| $10^{15}$ | u64 | ~9M | <1s |
+| $10^{19}$ | u64 | ~9M | ~1 min |
 | $10^{20}$ | u128 | ~1M | ~1 hr |
 | $10^{30}$ | u128 | ~1M | ~years |
 
