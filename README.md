@@ -1,6 +1,6 @@
 # Pomerance Triple Search
 
-A fast search algorithm for finding [Pomerance triples](https://github.com/AndrewVSutherland/DANGER3) $(p, A, x_0)$, developed for the data challenge at the [DANGER: Data, Numbers, and Geometry](https://www.birs.ca/events/2026/5-day-workshops/26w5525) workshop at BIRS, April 6–10, 2026.
+A fast search algorithm for finding Pomerance triples $(p, A, x_0)$, developed for the [data challenge](https://github.com/AndrewVSutherland/DANGER3) at the [DANGER: Data, Numbers, and Geometry](https://www.birs.ca/events/2026/5-day-workshops/26w5525) workshop at BIRS, April 6–10, 2026.
 
 The challenge was to find a Pomerance Triple for $10^19+51$, which was an order of magnitude larger than the known world record. The code found the triple
 ```
@@ -16,7 +16,7 @@ The challenge is to find a Pomerance triple with $p$ as large as possible withou
 
 See Andrew Sutherland's [DANGER3 repository](https://github.com/AndrewVSutherland/DANGER3) for the full problem definition, verification scripts, and precomputed data.
 
-The solution was vibe-coded with Claude Opus 4.6 with extended thinking. It took 12 iterations to get this working code. The initial challenge asked to beat the $\sqrt{p}$-scaling, which this code does not achieve. It won the challenge via a very fast C implementation of the algorithm and using small tricks like the 2-Sylow projection. 
+The solution was vibe-coded with Claude Opus 4.6 with extended thinking. It took 12 iterations to get this working code. The initial challenge also asked to beat the $\sqrt{p}$-scaling, which this code does not achieve. It won the challenge via a very fast C implementation of the algorithm and using performance improvements like the 2-Sylow projection. 
 
 ## Algorithm
 
@@ -90,7 +90,7 @@ The search requires $\sim\sqrt{p}$ random trials, each consisting of a Montgomer
 | $10^{20}$ | u128 | ~1M | ~1 hr |
 | $10^{30}$ | u128 | ~1M | ~years |
 
-For $p > 2^{127}$, a GMP-based implementation would be needed.
+For $p > 2^{127}$, a GMP-based implementation would be needed. On the other hand, $\sqrt{2^{127}}\approx10^{19}$, which would take 100,000 years.
 
 ## License
 
