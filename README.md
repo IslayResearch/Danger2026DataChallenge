@@ -1,3 +1,30 @@
+# DANGER3 p22 Pomerance Search Handoff
+
+This fork records a verified Pomerance triple for `p = 10^22 + 9` and a
+small Codex-assisted performance branch derived from Ruehle's 2-Sylow
+projection search.
+
+Verified triple:
+
+```text
+10000000000000000000009 9992566338662824267458 3694769590833803032125
+```
+
+The production search used 10 independent single-thread worker processes. The
+observed rate near success was about 1.03M trials/sec aggregate across those
+workers, not single-threaded. A same-machine single-thread benchmark against
+fresh upstream is recorded in `results/p22-benchmark-comparison.txt`.
+
+Reproducibility artifacts are in `results/`:
+
+- `p22-success-summary.txt`
+- `p22-verification.txt`
+- `p22-worker07-tail.txt`
+- `p22-benchmark-comparison.txt`
+- `pomerance_10000000000000000000009.lean`
+
+The original upstream README continues below.
+
 # Pomerance Triple Search
 
 A fast search algorithm for finding Pomerance triples $(p, A, x_0)$, developed for the [data challenge](https://github.com/AndrewVSutherland/DANGER3) at the [DANGER: Data, Numbers, and Geometry](https://www.birs.ca/events/2026/5-day-workshops/26w5525) workshop at BIRS, April 6–10, 2026.
