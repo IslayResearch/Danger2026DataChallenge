@@ -54,10 +54,12 @@ gcc-14 -O3 -fopenmp -o pomerance pomerance.c -lm
 ## Usage
 
 ```bash
-./pomerance <prime>
+./pomerance <prime> [seed_offset] [max_trials]
 ```
 
 The argument is a decimal integer. If it is not prime, the program finds the next prime. The program automatically selects u64 arithmetic for $p < 2^{63}$ and u128 arithmetic for $p < 2^{127}$.
+
+The optional `seed_offset` argument changes the PRNG stream, which is useful for sharded runs. The optional `max_trials` argument overrides the heuristic trial budget, which is useful for fixed-budget benchmarking.
 
 **Examples:**
 

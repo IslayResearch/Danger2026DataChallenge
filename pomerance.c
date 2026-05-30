@@ -19,7 +19,7 @@
  *   gcc -O3 -o pomerance pomerance.c -lm           (single-threaded)
  *
  * Usage:
- *   ./pomerance <p>
+ *   ./pomerance <p> [seed_offset] [max_trials]
  *
  * Reference: https://github.com/AndrewVSutherland/DANGER3
  */
@@ -37,6 +37,9 @@
 
 typedef uint64_t u64;
 typedef __uint128_t u128;
+
+static u64 g_seed_offset = 0;
+static u64 g_max_trials_override = 0;
 
 /* ================================================================
  * Parsing / printing u128
@@ -69,6 +72,21 @@ static inline u64 rng64(Rng *r) {
     u64 s1 = r->s0, s0 = r->s1; r->s0 = s0;
     s1 ^= s1 << 23; r->s1 = s1 ^ s0 ^ (s1 >> 17) ^ (s0 >> 26);
     return r->s1 + s0;
+}
+
+static inline int bitlen128(u128 x) {
+    u64 hi = (u64)(x >> 64);
+    if (hi) return 64 + (64 - __builtin_clzll(hi));
+    u64 lo = (u64)x;
+    return lo ? 64 - __builtin_clzll(lo) : 0;
+}
+
+static inline u128 rand_below128(Rng *rng, u128 p, u128 mask) {
+    for (;;) {
+        u128 v = ((u128)rng64(rng) << 64) | (u128)rng64(rng);
+        v &= mask;
+        if (v < p) return v;
+    }
 }
 
 /* ================================================================
@@ -243,6 +261,20 @@ static void xMUL128(u128 *Xo, u128 *Zo, u128 xP, u64 n, u128 a24, const Mont128 
     *Xo=X0; *Zo=Z0;
 }
 
+static void xMULPAIR128(u128 *Xn, u128 *Zn, u128 *Xnp1, u128 *Znp1,
+                         u128 xP, u64 n, u128 a24, const Mont128 *m) {
+    if (n==0) { *Xn=0; *Zn=0; *Xnp1=xP; *Znp1=m->one; return; }
+    u128 X0=xP, Z0=m->one, X1, Z1;
+    xDBL128(&X1,&Z1,X0,Z0,a24,m);
+    if (n==1) { *Xn=X0; *Zn=Z0; *Xnp1=X1; *Znp1=Z1; return; }
+    int bits = 64 - __builtin_clzll(n);
+    for (int i=bits-2; i>=0; i--) {
+        if ((n>>i)&1) { xADD128(&X0,&Z0,X0,Z0,X1,Z1,xP,m); xDBL128(&X1,&Z1,X1,Z1,a24,m); }
+        else          { xADD128(&X1,&Z1,X0,Z0,X1,Z1,xP,m); xDBL128(&X0,&Z0,X0,Z0,a24,m); }
+    }
+    *Xn=X0; *Zn=Z0; *Xnp1=X1; *Znp1=Z1;
+}
+
 static u128 mulmod_slow(u128 a, u128 b, u128 p) {
     u128 r=0; a%=p; b%=p;
     while (b>0) { if(b&1){r+=a;if(r>=p)r-=p;} a+=a;if(a>=p)a-=p; b>>=1; }
@@ -273,6 +305,29 @@ static int verify128(u128 p, u128 A, u128 x0) {
     return 1;
 }
 
+static int projected_hit128(u128 *xRo, u128 p, u128 A, int k, int max_s,
+                            u128 QX, u128 QZ, u128 a24m, const Mont128 *mt) {
+    if (QZ == 0) return 0;
+    u128 CX=QX, CZ=QZ;
+    int zs = -1;
+    for (int s=1; s<=max_s && s<50; s++) {
+        xDBL128(&CX,&CZ,CX,CZ,a24m,mt);
+        if (CZ==0) { zs=s; break; }
+    }
+    if (zs < k) return 0;
+    int target = zs - k;
+    CX=QX; CZ=QZ;
+    for (int s=0; s<target; s++) xDBL128(&CX,&CZ,CX,CZ,a24m,mt);
+    u128 cz = frM128(CZ, mt);
+    if (cz == 0) return 0;
+    u128 czinv_m = mt->one, base = CZ; u128 e2 = p-2;
+    while (e2>0) { if(e2&1) czinv_m=mm128(czinv_m,base,mt); base=mm128(base,base,mt); e2>>=1; }
+    u128 xR = frM128(mm128(CX, czinv_m, mt), mt);
+    if (!verify128(p, A, xR)) return 0;
+    *xRo = xR;
+    return 1;
+}
+
 /* ================================================================
  * Shared: compute_k, odd parts, Miller-Rabin (all u128-safe)
  * ================================================================ */
@@ -288,7 +343,7 @@ static int compute_k(u128 p) {
     int k=0; u64 v=1; while(v<=bound){k++;v<<=1;} return k;
 }
 
-static int compute_odd_parts(u128 p, int k, u64 *ms, int max_ms) {
+static int compute_odd_parts(u128 p, int k, u64 *ms, int *max_v2s, int max_ms) {
     if (k >= 63) return 0;
     u64 twok = 1ULL << k;
     u128 pp1 = p + 1;
@@ -318,9 +373,15 @@ static int compute_odd_parts(u128 p, int k, u64 *ms, int max_ms) {
                 if (tmp >> 63) continue;
                 u64 odd = (u64)tmp;
                 if (odd == 0) continue;
-                int dup = 0;
-                for (int c = 0; c < count; c++) if (ms[c] == odd) { dup = 1; break; }
-                if (!dup) ms[count++] = odd;
+                int dup = -1;
+                for (int c = 0; c < count; c++) if (ms[c] == odd) { dup = c; break; }
+                if (dup >= 0) {
+                    if (max_v2s && v2 > max_v2s[dup]) max_v2s[dup] = v2;
+                } else {
+                    ms[count] = odd;
+                    if (max_v2s) max_v2s[count] = v2;
+                    count++;
+                }
             }
         }
     }
@@ -356,7 +417,8 @@ static int search64(u64 p) {
     while ((u128)(sqrtp+1)*(sqrtp+1)<=(u128)p) sqrtp++;
     while ((u128)sqrtp*sqrtp>(u128)p) sqrtp--;
 
-    u64 ms[64]; int nms = compute_odd_parts(p, k, ms, 64);
+    u64 ms[64]; int max_v2s[64];
+    int nms = compute_odd_parts(p, k, ms, max_v2s, 64);
     printf("k = %d\n", k);
     printf("Odd parts (%d):", nms);
     for (int i=0;i<nms;i++) printf(" %llu", (unsigned long long)ms[i]);
@@ -368,6 +430,7 @@ static int search64(u64 p) {
 
     u64 max_trials = (u64)(20.0 * (double)sqrtp / nms);
     if (max_trials < 10000000ULL) max_trials = 10000000ULL;
+    if (g_max_trials_override) max_trials = g_max_trials_override;
 
     int nth = 1;
 #ifdef _OPENMP
@@ -386,8 +449,10 @@ static int search64(u64 p) {
 #ifdef _OPENMP
         tid = omp_get_thread_num(); nthr = omp_get_num_threads();
 #endif
-        Rng rng = {.s0=7364529176530163ULL^((u64)tid*6364136223846793005ULL),
-                   .s1=1442695040888963407ULL^((u64)(tid+1)*2862933555777941757ULL)};
+        Rng rng = {
+            .s0=7364529176530163ULL^((u64)tid*6364136223846793005ULL)^g_seed_offset,
+            .s1=1442695040888963407ULL^((u64)(tid+1)*2862933555777941757ULL)^(g_seed_offset<<1)
+        };
         for (int i=0;i<200;i++) rng64(&rng);
         u64 budget = max_trials / nthr + 1, lc = 0;
 
@@ -433,9 +498,10 @@ static int search64(u64 p) {
             if (tid==0 && lc%1000000==0 && !found) {
                 double el = now_sec()-t0;
                 u64 est = lc * nthr;
-                printf("  %lluM trials  %.1f%%  %.1fs  %.1fM/s\n",
-                       (unsigned long long)(est/1000000),
+                printf("  trials=%llu percent=%.6f elapsed=%.1f rate_Mps=%.3f\n",
+                       (unsigned long long)est,
                        100.0*est/max_trials, el, est/el/1e6);
+                fflush(stdout);
             }
         }
     }
@@ -459,7 +525,8 @@ static int search128(u128 p) {
     while ((u128)(sqrtp+1)*(sqrtp+1)<=p) sqrtp++;
     while ((u128)sqrtp*sqrtp>p) sqrtp--;
 
-    u64 ms[64]; int nms = compute_odd_parts(p, k, ms, 64);
+    u64 ms[64]; int max_v2s[64];
+    int nms = compute_odd_parts(p, k, ms, max_v2s, 64);
     printf("k = %d\n", k);
     printf("Odd parts (%d):", nms);
     for (int i=0;i<nms;i++) printf(" %llu", (unsigned long long)ms[i]);
@@ -467,6 +534,8 @@ static int search128(u128 p) {
     if (nms == 0) { printf("No valid odd parts.\n"); return 1; }
 
     Mont128 mt; m128_init(&mt, p);
+    int pbits = bitlen128(p);
+    u128 rand_mask = pbits >= 128 ? (u128)0 - 1 : (((u128)1 << pbits) - 1);
     /* inv4 in Montgomery form */
     u128 inv4_m;
     { u128 four_m=toM128(4,&mt), r=mt.one, b=four_m; u128 e=p-2;
@@ -474,6 +543,7 @@ static int search128(u128 p) {
 
     u64 max_trials = (u64)(20.0 * (double)sqrtp / nms);
     if (max_trials < 10000000ULL) max_trials = 10000000ULL;
+    if (g_max_trials_override) max_trials = g_max_trials_override;
 
     int nth = 1;
 #ifdef _OPENMP
@@ -492,40 +562,27 @@ static int search128(u128 p) {
 #ifdef _OPENMP
         tid = omp_get_thread_num(); nthr = omp_get_num_threads();
 #endif
-        Rng rng = {.s0=7364529176530163ULL^((u64)tid*6364136223846793005ULL),
-                   .s1=1442695040888963407ULL^((u64)(tid+1)*2862933555777941757ULL)};
+        Rng rng = {
+            .s0=7364529176530163ULL^((u64)tid*6364136223846793005ULL)^g_seed_offset,
+            .s1=1442695040888963407ULL^((u64)(tid+1)*2862933555777941757ULL)^(g_seed_offset<<1)
+        };
         for (int i=0;i<200;i++) rng64(&rng);
         u64 budget = max_trials / nthr + 1, lc = 0;
 
         while (!found && lc < budget) {
-            u128 A = (u128)rng64(&rng) | ((u128)rng64(&rng) << 64); A %= p;
-            u128 x0r = (u128)rng64(&rng) | ((u128)rng64(&rng) << 64); x0r %= p;
+            u128 A = rand_below128(&rng, p, rand_mask);
+            u128 x0r = rand_below128(&rng, p, rand_mask);
             if (A<=2 || A>=p-2 || x0r<2) { lc++; continue; }
 
             u128 Ap2_m = toM128(addmod128(A,2,p), &mt);
             u128 a24m = mm128(Ap2_m, inv4_m, &mt);
             u128 x0m = toM128(x0r, &mt);
 
-            for (int mi=0; mi<nms && !found; mi++) {
-                u128 QX, QZ;
-                xMUL128(&QX, &QZ, x0m, ms[mi], a24m, &mt);
-                if (QZ == 0) continue;
-                u128 CX=QX, CZ=QZ;
-                int zs = -1;
-                for (int s=1; s<=k+10 && s<50; s++) {
-                    xDBL128(&CX,&CZ,CX,CZ,a24m,&mt);
-                    if (CZ==0) { zs=s; break; }
-                }
-                if (zs < k) continue;
-                int target = zs - k;
-                CX=QX; CZ=QZ;
-                for (int s=0; s<target; s++) xDBL128(&CX,&CZ,CX,CZ,a24m,&mt);
-                u128 cz = frM128(CZ, &mt);
-                if (cz == 0) continue;
-                u128 czinv_m = mt.one, base = CZ; u128 e2 = p-2;
-                while (e2>0) { if(e2&1) czinv_m=mm128(czinv_m,base,&mt); base=mm128(base,base,&mt); e2>>=1; }
-                u128 xR = frM128(mm128(CX, czinv_m, &mt), &mt);
-                if (verify128(p, A, xR)) {
+            if (nms == 3 && ms[1] == 2*ms[0] + 1 && ms[2] == 2*ms[0] - 1) {
+                u128 QX, QZ, RX, RZ, SX, SZ, xR;
+
+                xMULPAIR128(&QX, &QZ, &RX, &RZ, x0m, ms[0], a24m, &mt);
+                if (projected_hit128(&xR, p, A, k, max_v2s[0], QX, QZ, a24m, &mt)) {
 #pragma omp critical
                     {
                         if (!found) {
@@ -536,14 +593,58 @@ static int search128(u128 p) {
                         }
                     }
                 }
+
+                xADD128(&SX, &SZ, QX, QZ, RX, RZ, x0m, &mt);
+                if (!found && projected_hit128(&xR, p, A, k, max_v2s[1], SX, SZ, a24m, &mt)) {
+#pragma omp critical
+                    {
+                        if (!found) {
+                            found=1; found_A=A; found_x0=xR;
+                            double el = now_sec()-t0;
+                            printf("Found after %.2fs (~%llu trials)\n\n",
+                                   el, (unsigned long long)(lc * nthr));
+                        }
+                    }
+                }
+
+                xMULPAIR128(&QX, &QZ, &RX, &RZ, x0m, ms[0]-1, a24m, &mt);
+                xADD128(&SX, &SZ, QX, QZ, RX, RZ, x0m, &mt);
+                if (!found && projected_hit128(&xR, p, A, k, max_v2s[2], SX, SZ, a24m, &mt)) {
+#pragma omp critical
+                    {
+                        if (!found) {
+                            found=1; found_A=A; found_x0=xR;
+                            double el = now_sec()-t0;
+                            printf("Found after %.2fs (~%llu trials)\n\n",
+                                   el, (unsigned long long)(lc * nthr));
+                        }
+                    }
+                }
+            } else {
+                for (int mi=0; mi<nms && !found; mi++) {
+                    u128 QX, QZ, xR;
+                    xMUL128(&QX, &QZ, x0m, ms[mi], a24m, &mt);
+                    if (projected_hit128(&xR, p, A, k, max_v2s[mi], QX, QZ, a24m, &mt)) {
+#pragma omp critical
+                        {
+                            if (!found) {
+                                found=1; found_A=A; found_x0=xR;
+                                double el = now_sec()-t0;
+                                printf("Found after %.2fs (~%llu trials)\n\n",
+                                       el, (unsigned long long)(lc * nthr));
+                            }
+                        }
+                    }
+                }
             }
             lc++;
             if (tid==0 && lc%500000==0 && !found) {
                 double el = now_sec()-t0;
                 u64 est = lc * nthr;
-                printf("  %lluM trials  %.1f%%  %.1fs  %.1fM/s\n",
-                       (unsigned long long)(est/1000000),
+                printf("  trials=%llu percent=%.6f elapsed=%.1f rate_Mps=%.3f\n",
+                       (unsigned long long)est,
                        100.0*est/max_trials, el, est/el/1e6);
+                fflush(stdout);
             }
         }
     }
@@ -565,15 +666,22 @@ static int search128(u128 p) {
 
 int main(int argc, char **argv) {
     if (argc < 2) {
-        fprintf(stderr, "Usage: %s <prime>\n", argv[0]);
+        fprintf(stderr, "Usage: %s <prime> [seed_offset] [max_trials]\n", argv[0]);
         return 1;
     }
 
     u128 p = parse128(argv[1]);
+    if (argc >= 3) g_seed_offset = (u64)parse128(argv[2]);
+    if (argc >= 4) g_max_trials_override = (u64)parse128(argv[3]);
     if (p < 5) { fprintf(stderr, "p must be >= 5\n"); return 1; }
 
     printf("Pomerance triple search\n\n");
     printf("p = "); print128(p); printf("  (%d digits)\n", digits128(p));
+    if (g_seed_offset || g_max_trials_override) {
+        printf("seed_offset = %llu  max_trials_override = %llu\n",
+               (unsigned long long)g_seed_offset,
+               (unsigned long long)g_max_trials_override);
+    }
 
     if (!is_prime128(p)) {
         printf("Not prime, finding next...\n");
