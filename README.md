@@ -23,6 +23,27 @@ Reproducibility artifacts are in `results/`:
 - `p22-benchmark-comparison.txt`
 - `pomerance_10000000000000000000009.lean`
 
+## Iteration Process
+
+I started this as a Codex-assisted exploration of the DANGER3 challenge: first to understand the search space and verification criteria, then to see whether a practical run for `p = 10^22 + 9` was plausible on the machine I had available. The broader exploration included some guided-search ideas, but this public handoff keeps only the reproducible p22 result and the local performance fork.
+
+My main contributions were framing the run as an operational search problem: we had one dedicated machine, persistent `tmux` sessions, and Codex available to inspect, modify, benchmark, and monitor the code over a long-running job. For `p = 10^22 + 9`, the basic search scale is `sqrt(p) ~= 100B` trials, and this program's conservative p22 budget was about `20*sqrt(p)/3 ~= 667B` trials. At an early observed aggregate rate around `0.95M` trials/sec, exhausting that budget would take about eight days, so I directed the effort toward increasing trials/sec rather than changing the mathematical search strategy. When the exploratory performance work showed a local lift, even a modest one, I made the call that it was worth switching the production run to the optimized branch.
+
+The approach that worked was not a new asymptotic algorithm. It was to build directly on Ruehle's 2-Sylow projection search, benchmark it carefully, and then iterate on small constant-factor improvements in the hot loop. The practical loop was:
+
+1. inspect the existing implementation and verifier assumptions;
+2. estimate the run budget from observed trials/sec;
+3. make the run shardable across independent single-thread workers;
+4. add fixed-budget benchmarking so changes could be compared directly;
+5. optimize the u128 search path for the p22 case;
+6. launch 10 independent single-thread workers, each on a separate random stream, under persistent `tmux` supervision;
+7. keep a transparent status/job-manager view of active workers, observed rates, elapsed time, and success criteria;
+8. verify the triple with the DANGER3 verifier, primality checking, and an independent doubling replay.
+
+The status workflow mattered because this was a long-running randomized computation. A human needed to be able to answer, at any point, whether the workers were still alive, how many trials had been observed, what rate they were sustaining, whether any success condition had fired, and what evidence would count as "done."
+
+The result is therefore best understood as Ruehle's search strategy plus a small Codex-assisted C performance fork, with Alexa directing the operating constraints, benchmark decisions, production-run management, and verification handoff.
+
 The original upstream README continues below.
 
 # Pomerance Triple Search
