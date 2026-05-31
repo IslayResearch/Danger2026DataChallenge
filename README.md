@@ -30,19 +30,21 @@ I started this as a Codex-assisted exploration of the DANGER3 challenge: first t
 
 My main contributions were framing the run as an operational search problem: I had one dedicated machine, persistent `tmux` sessions, and Codex available to inspect, modify, benchmark, and monitor the code over a long-running job. For `p = 10^22 + 9`, the basic search scale is `sqrt(p) ~= 100B` trials, and this program's conservative p22 budget was about `20*sqrt(p)/3 ~= 667B` trials. At an early observed aggregate rate around `0.95M` trials/sec, exhausting that budget would take about eight days, so I directed the effort toward increasing trials/sec rather than changing the mathematical search strategy. When the exploratory performance work showed a local lift of about 15%, I made the call that it was worth switching the production run to the optimized branch.
 
-The changes were engineering optimizations inside the same strategy:
+## Engineering Optimizations
 
-Special-case the odd parts pattern
-For this p, the valid odd parts are:
+The changes were engineering optimizations inside the same 2-Sylow projection strategy:
 
-m, 2m+1, 2m-1
-Ruehle’s generic loop does a scalar multiplication separately for each odd part. Our fork reuses related Montgomery ladder computations so it avoids some repeated work.
+- **Special-case the odd-parts pattern.** For this `p`, the valid odd parts are:
 
-Avoid expensive random % p reductions
-Upstream creates random 128-bit values and reduces them modulo p. % on u128 can be costly. Our fork uses masked rejection sampling to generate values below p.
+  ```text
+  m, 2m + 1, 2m - 1
+  ```
 
-Stop the doubling check earlier
-Upstream checks up to k+10 doublings after projection. For this case, the possible 2-adic depths tell us we only need to check up to the actual max depth for each odd part, often k or k+1.
+  Ruehle's generic loop does a scalar multiplication separately for each odd part. This fork reuses related Montgomery ladder computations so it avoids some repeated work.
+
+- **Avoid expensive random `% p` reductions.** Upstream creates random 128-bit values and reduces them modulo `p`. `%` on `u128` can be costly, so this fork uses masked rejection sampling to generate values below `p`.
+
+- **Stop the doubling check earlier.** Upstream checks up to `k + 10` doublings after projection. For this case, the possible 2-adic depths tell us we only need to check up to the actual maximum depth for each odd part, often `k` or `k + 1`.
 
 The approach that worked was not a new asymptotic algorithm. It was to build directly on Ruehle's 2-Sylow projection search, benchmark it carefully, and then iterate on small constant-factor improvements in the hot loop. The practical loop was:
 
