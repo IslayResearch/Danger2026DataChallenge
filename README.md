@@ -28,11 +28,11 @@ Reproducibility artifacts are in `results/`:
 
 I started this as a Codex-assisted exploration of the DANGER3 challenge: first to understand the search space and verification criteria, then to see whether a practical run for `p = 10^22 + 9` was plausible on the machine I had available. The broader exploration included some guided-search ideas, but this public handoff keeps only the reproducible p22 result and the local performance fork.
 
-My main contributions were framing the run as an operational search problem: I had one dedicated machine, persistent `tmux` sessions, and Codex running GPT 5.5-xhigh available to inspect, modify, benchmark, and monitor the code over a long-running job. For `p = 10^22 + 9`, the basic search scale is `sqrt(p) ~= 100B` trials, and this program's conservative p22 budget was about `20*sqrt(p)/3 ~= 667B` trials. At an early observed aggregate rate around `0.95M` trials/sec, exhausting that budget would take about eight days, so I directed the effort toward increasing trials/sec rather than changing the mathematical search strategy. When the exploratory performance work showed a local lift of about 15%, I made the call that it was worth switching the production run to the optimized branch.
+My main contributions were framing the run as an operational search problem: I had one dedicated machine, persistent `tmux` sessions, and Codex running GPT 5.5 available to inspect, modify, benchmark, and monitor the code over a long-running job. For `p = 10^22 + 9`, the basic search scale is `sqrt(p) ~= 100B` trials, and this program's conservative p22 budget was about `20*sqrt(p)/3 ~= 667B` trials. At an early observed aggregate rate around `0.95M` trials/sec, exhausting that budget would take about eight days, so I directed the effort toward increasing trials/sec rather than changing the mathematical search strategy. When the exploratory performance work showed a local lift of about 15%, I made the call that it was worth switching the production run to the optimized branch.
 
-## Engineering Optimizations
+## Performance Engineering Optimizations
 
-The changes were engineering optimizations inside the same 2-Sylow projection strategy:
+The changes made by GPT 5.5 were engineering optimizations inside the same 2-Sylow projection strategy:
 
 - **Special-case the odd-parts pattern.** For this `p`, the valid odd parts are:
 
@@ -61,7 +61,7 @@ The approach that worked was not a new asymptotic algorithm. It was to build dir
 
 The status workflow mattered because this was a long-running randomized computation. I needed to be able to answer, at any point, whether the workers were still alive, how many trials had been observed, what rate they were sustaining, whether any success condition had fired, and what evidence would count as "done."
 
-The result is therefore best understood as Ruehle's search strategy plus a small Codex-assisted C performance fork, with Alexa directing the operating constraints, benchmark decisions, production-run management, and verification handoff. One iteration was enough to achieve this result, I suspect there are additional gains to be had with this approach.
+The result is therefore best understood as Ruehle's search strategy plus a GPT 5.5 authored C performance fork, with Alexa directing the operating constraints, benchmark decisions, production-run management, and verification handoff. One iteration was enough to achieve this result, I suspect there are additional gains to be had with this approach.
 
 The original upstream README continues below.
 
