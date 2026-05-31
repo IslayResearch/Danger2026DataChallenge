@@ -4,8 +4,7 @@ This fork records a verified Pomerance triple for `p = 10^22 + 9` and a
 small Codex-assisted performance branch derived from Ruehle's 2-Sylow
 projection search. This work was undertaken as part of a collaboration across teams in DARPA's expMath program.
 
-The goal of this run was to find a Pomerance triple for `p = 10^22 + 9`.
-The run found the triple
+The run found the triple:
 
 ```text
 10000000000000000000009 9992566338662824267458 3694769590833803032125
@@ -31,6 +30,20 @@ I started this as a Codex-assisted exploration of the DANGER3 challenge: first t
 
 My main contributions were framing the run as an operational search problem: I had one dedicated machine, persistent `tmux` sessions, and Codex available to inspect, modify, benchmark, and monitor the code over a long-running job. For `p = 10^22 + 9`, the basic search scale is `sqrt(p) ~= 100B` trials, and this program's conservative p22 budget was about `20*sqrt(p)/3 ~= 667B` trials. At an early observed aggregate rate around `0.95M` trials/sec, exhausting that budget would take about eight days, so I directed the effort toward increasing trials/sec rather than changing the mathematical search strategy. When the exploratory performance work showed a local lift of about 15%, I made the call that it was worth switching the production run to the optimized branch.
 
+The changes were engineering optimizations inside the same strategy:
+
+Special-case the odd parts pattern
+For this p, the valid odd parts are:
+
+m, 2m+1, 2m-1
+Ruehle’s generic loop does a scalar multiplication separately for each odd part. Our fork reuses related Montgomery ladder computations so it avoids some repeated work.
+
+Avoid expensive random % p reductions
+Upstream creates random 128-bit values and reduces them modulo p. % on u128 can be costly. Our fork uses masked rejection sampling to generate values below p.
+
+Stop the doubling check earlier
+Upstream checks up to k+10 doublings after projection. For this case, the possible 2-adic depths tell us we only need to check up to the actual max depth for each odd part, often k or k+1.
+
 The approach that worked was not a new asymptotic algorithm. It was to build directly on Ruehle's 2-Sylow projection search, benchmark it carefully, and then iterate on small constant-factor improvements in the hot loop. The practical loop was:
 
 1. inspect the existing implementation and verifier assumptions;
@@ -42,7 +55,7 @@ The approach that worked was not a new asymptotic algorithm. It was to build dir
 7. keep a transparent status/job-manager view of active workers, observed rates, elapsed time, and success criteria;
 8. verify the triple with the DANGER3 verifier, primality checking, and an independent doubling replay.
 
-The status workflow mattered because this was a long-running randomized computation. A human needed to be able to answer, at any point, whether the workers were still alive, how many trials had been observed, what rate they were sustaining, whether any success condition had fired, and what evidence would count as "done."
+The status workflow mattered because this was a long-running randomized computation. I needed to be able to answer, at any point, whether the workers were still alive, how many trials had been observed, what rate they were sustaining, whether any success condition had fired, and what evidence would count as "done."
 
 The result is therefore best understood as Ruehle's search strategy plus a small Codex-assisted C performance fork, with Alexa directing the operating constraints, benchmark decisions, production-run management, and verification handoff. One iteration was enough to achieve this result, I suspect there are additional gains to be had with this approach.
 
