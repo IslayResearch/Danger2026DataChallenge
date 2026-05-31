@@ -4,16 +4,18 @@ This fork records a verified Pomerance triple for `p = 10^22 + 9` and a
 small Codex-assisted performance branch derived from Ruehle's 2-Sylow
 projection search.
 
-Verified triple:
+The goal of this run was to find a Pomerance triple for `p = 10^22 + 9`.
+The run found the triple
 
 ```text
 10000000000000000000009 9992566338662824267458 3694769590833803032125
 ```
 
-The production search used 10 independent single-thread worker processes. The
-observed rate near success was about 1.03M trials/sec aggregate across those
-workers, not single-threaded. A same-machine single-thread benchmark against
-fresh upstream is recorded in `results/p22-benchmark-comparison.txt`.
+after 56,761.05 seconds on the successful worker, with about 58.65 billion
+aggregate observed trials across 10 workers. The observed rate near success was
+about 1.03M trials/sec aggregate across those workers, not single-threaded. A
+same-machine single-thread benchmark against fresh upstream is recorded in
+`results/p22-benchmark-comparison.txt`.
 
 Reproducibility artifacts are in `results/`:
 
