@@ -11,7 +11,7 @@ The run found the triple
 10000000000000000000009 9992566338662824267458 3694769590833803032125
 ```
 
-after 56,761.05 seconds on the successful worker, with about 58.65 billion
+after 15.77 hours on the successful worker, with about 58.65 billion
 aggregate observed trials across 10 workers. The observed rate near success was
 about 1.03M trials/sec aggregate across those workers, not single-threaded. A
 same-machine single-thread benchmark against fresh upstream is recorded in
