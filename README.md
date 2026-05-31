@@ -46,6 +46,8 @@ The changes were engineering optimizations inside the same 2-Sylow projection st
 
 - **Stop the doubling check earlier.** Upstream checks up to `k + 10` doublings after projection. For this case, the possible 2-adic depths tell us we only need to check up to the actual maximum depth for each odd part, often `k` or `k + 1`.
 
+
+##Workflow
 The approach that worked was not a new asymptotic algorithm. It was to build directly on Ruehle's 2-Sylow projection search, benchmark it carefully, and then iterate on small constant-factor improvements in the hot loop. The practical loop was:
 
 1. inspect the existing implementation and verifier assumptions;
