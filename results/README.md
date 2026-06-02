@@ -1,4 +1,23 @@
-# DANGER3 p22 Result
+# DANGER3 Result Artifacts
+
+This directory records verified Pomerance triples and compact reproducibility
+artifacts for the local Codex-assisted DANGER3 runs.
+
+## p23 Result
+
+The p23 artifacts are in `p23/`.
+
+```text
+p  = 100000000000000000000117
+A  = 24163028207499560363686
+x0 = 64911014007772963770218
+```
+
+The successful p23 shard used y-filtered nonsplit `X1(16)` first-branch
+halving and found the triple after about 31.05B aggregate accepted trials. See
+`p23/README.md` for details.
+
+## p22 Result
 
 This directory records a Pomerance triple found for
 
