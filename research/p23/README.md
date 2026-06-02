@@ -12,6 +12,7 @@ time-stamped research context. The verified final outcome supersedes them.
 
 ## Core Result
 
+- `references.md`: centralized literature and attribution for the p23 method.
 - `p23_full_experiment_result_20260602.md`: full experiment/result write-up.
 - `p23_ruled_maybe_untested_synthesis_20260601.md`: compact ledger of what was ruled out, what remained possible, and what moved to production.
 - `p23_true_subsqrt_scaling_frontier_20260602.md`: interpretation of fixed-prime constant-factor wins versus true asymptotic sub-sqrt scaling.
